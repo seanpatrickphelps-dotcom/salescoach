@@ -8,15 +8,18 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-// Compress audio file to fit Whisper's 25MB limit
+// Compress audio to MP3 (much smaller than WAV, fits Whisper's 25MB limit)
 async function compressAudio(file) {
   return new Promise(async (resolve, reject) => {
     try {
+      // Dynamically import lamejs (only needed when compression is required)
+      const lamejs = await import('@breezystack/lamejs');
+      
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
       const arrayBuffer = await file.arrayBuffer();
       const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
       
-      // Downsample to mono 16kHz (plenty for speech, Whisper-optimal)
+      // Downsample to mono 16kHz
       const targetSampleRate = 16000;
       const offlineContext = new OfflineAudioContext(
         1, // mono
@@ -31,62 +34,43 @@ async function compressAudio(file) {
       
       const renderedBuffer = await offlineContext.startRendering();
       
-      // Convert to WAV (universally supported by Whisper)
-      const wavBlob = audioBufferToWav(renderedBuffer);
-      const compressedFile = new File([wavBlob], 'compressed.wav', { type: 'audio/wav' });
+      // Encode to MP3 at 32kbps (plenty for speech recognition)
+      const channelData = renderedBuffer.getChannelData(0);
+      
+      // Convert Float32 to Int16 (what lamejs needs)
+      const samples = new Int16Array(channelData.length);
+      for (let i = 0; i < channelData.length; i++) {
+        const sample = Math.max(-1, Math.min(1, channelData[i]));
+        samples[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+      }
+      
+      // mp3encoder: (channels, sampleRate, kbps)
+      const mp3encoder = new lamejs.Mp3Encoder(1, targetSampleRate, 32);
+      const mp3Data = [];
+      const blockSize = 1152; // standard MP3 frame size
+      
+      for (let i = 0; i < samples.length; i += blockSize) {
+        const sampleChunk = samples.subarray(i, i + blockSize);
+        const mp3buf = mp3encoder.encodeBuffer(sampleChunk);
+        if (mp3buf.length > 0) {
+          mp3Data.push(mp3buf);
+        }
+      }
+      
+      // Finalize
+      const mp3buf = mp3encoder.flush();
+      if (mp3buf.length > 0) {
+        mp3Data.push(mp3buf);
+      }
+      
+      const mp3Blob = new Blob(mp3Data, { type: 'audio/mpeg' });
+      const compressedFile = new File([mp3Blob], 'compressed.mp3', { type: 'audio/mpeg' });
       
       resolve(compressedFile);
     } catch (err) {
       reject(err);
     }
   });
-}
-
-// Convert AudioBuffer to WAV Blob
-function audioBufferToWav(buffer) {
-  const numChannels = 1;
-  const sampleRate = buffer.sampleRate;
-  const format = 1; // PCM
-  const bitDepth = 16;
-  
-  const data = buffer.getChannelData(0);
-  const byteRate = sampleRate * numChannels * bitDepth / 8;
-  const blockAlign = numChannels * bitDepth / 8;
-  const dataSize = data.length * blockAlign;
-  
-  const arrayBuffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(arrayBuffer);
-  
-  // WAV header
-  writeString(view, 0, 'RIFF');
-  view.setUint32(4, 36 + dataSize, true);
-  writeString(view, 8, 'WAVE');
-  writeString(view, 12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, format, true);
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, byteRate, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, bitDepth, true);
-  writeString(view, 36, 'data');
-  view.setUint32(40, dataSize, true);
-  
-  // PCM data
-  let offset = 44;
-  for (let i = 0; i < data.length; i++) {
-    const sample = Math.max(-1, Math.min(1, data[i]));
-    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
-    offset += 2;
-  }
-  
-  return new Blob([arrayBuffer], { type: 'audio/wav' });
-}
-
-function writeString(view, offset, string) {
-  for (let i = 0; i < string.length; i++) {
-    view.setUint8(offset + i, string.charCodeAt(i));
-  }
 }
 
 export default function Home() {
@@ -118,29 +102,31 @@ export default function Home() {
     try {
       // Sanitize filename
       const safeName = file.name.replace(/[^\w.-]/g, '_');
-      const fileName = `${Date.now()}-${safeName}`;
+      const fileName = `${Date.now()}-${safeName.replace(/\.[^.]+$/, '')}.mp3`;
       
-      console.log('Original file:', fileName, 'Size:', file.size);
+      console.log('Original file:', file.name, 'Size:', file.size);
 
       let uploadFile = file;
       const TWENTY_FIVE_MB = 25 * 1024 * 1024;
 
       // Compress audio if larger than 25MB (Whisper's hard limit)
+      // Also compress if not already mp3, to ensure consistent format
       if (file.size > TWENTY_FIVE_MB) {
-        console.log('File over 25MB, compressing...');
+        console.log('File over 25MB, compressing to MP3...');
         setStatusMsg('Compressing recording...');
         
         try {
           uploadFile = await compressAudio(file);
           console.log('Compressed file size:', uploadFile.size);
+          console.log('Compression ratio:', ((1 - uploadFile.size / file.size) * 100).toFixed(1) + '%');
           setStatusMsg('Uploading...');
         } catch (compressErr) {
           console.error('Compression failed:', compressErr);
-          throw new Error('Recording is too large to process. Try a shorter recording (under 90 minutes).');
+          throw new Error('Recording could not be compressed. Try a shorter recording.');
         }
       }
 
-      // Upload DIRECTLY to Supabase Storage (no Vercel size limit)
+      // Upload DIRECTLY to Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('recordings')
         .upload(fileName, uploadFile, {
@@ -199,7 +185,7 @@ export default function Home() {
         userMessage = 'Your recording is stored in the cloud. Save it to your phone first, then upload. Or record directly with Voice Memos.';
       } else if (userMessage.toLowerCase().includes('too large') ||
                  userMessage.toLowerCase().includes('entity')) {
-        userMessage = 'File is too large. Try a shorter recording (under 90 minutes).';
+        userMessage = 'File is too large. Try a shorter recording.';
       }
       
       setErrorMsg(userMessage);
@@ -452,7 +438,7 @@ export default function Home() {
                 background: '#eff6ff', border: '2px solid #004DE1',
                 color: '#004DE1', fontSize: '14px', lineHeight: '1.4', fontWeight: '600'
               }}>
-                Large recording detected. Compressing for transcription. This takes about 10-30 seconds depending on length.
+                Large recording detected. Compressing for transcription. This takes about 30-60 seconds depending on length.
               </div>
             )}
           </div>
