@@ -124,9 +124,18 @@ export async function POST(request) {
       }
     }
     
+// Trigger evaluation in the background
+    const baseUrl = request.headers.get('origin') || 'https://' + request.headers.get('host');
+    fetch(`${baseUrl}/api/evaluate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ submissionId })
+    }).catch(err => console.error('Evaluate trigger failed:', err));
+
     return Response.json({ 
-      error: err.message || 'Transcription failed' 
-    }, { status: 500 });
+      success: true, 
+      transcript: transcription.text 
+    });
   }
 }
 
