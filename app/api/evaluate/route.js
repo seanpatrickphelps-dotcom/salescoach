@@ -12,8 +12,13 @@ const anthropic = new Anthropic({
 });
 
 export async function POST(request) {
+  console.log('===== EVALUATE ROUTE STARTED =====');
+  console.log('ANTHROPIC_API_KEY exists:', !!process.env.ANTHROPIC_API_KEY);
+  console.log('ANTHROPIC_API_KEY length:', process.env.ANTHROPIC_API_KEY?.length || 0);
+  
   try {
     const { submissionId } = await request.json();
+    console.log('Received submissionId:', submissionId);
 
     if (!submissionId) {
       return Response.json({ error: 'No submission ID provided' }, { status: 400 });
