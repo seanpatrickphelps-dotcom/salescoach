@@ -1,32 +1,20 @@
 import { createClient } from '@supabase/supabase-js';
-import OpenAI, { toFile } from 'openai';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
 export async function POST(request) {
+  console.log('===== TRANSCRIBE ROUTE STARTED =====');
+  console.log('ASSEMBLYAI_API_KEY exists:', !!process.env.ASSEMBLYAI_API_KEY);
+  
   try {
     const { submissionId } = await request.json();
-
+    console.log('Received submissionId:', submissionId);
+    
     if (!submissionId) {
-      return Response.json({ error: 'No submission ID provided' }, { status: 400 });
-    }
-
-    // Get the submission record
-    const { data: submission, error: fetchError } = await supabase
-      .from('submissions')
-      .select('*')
-      .eq('id', submissionId)
-      .single();
-
-    if (fetchError || !submission) {
-      return Response.json({ error: 'Submission not found' }, { status: 404 });
+      return Response.json({ error: 'Missing submissionId' }, { status: 400 });
     }
 
     // Update status to transcribing
@@ -35,73 +23,113 @@ export async function POST(request) {
       .update({ status: 'transcribing' })
       .eq('id', submissionId);
 
-    // Extract the file path from the audio URL
-    const audioUrlObj = new URL(submission.audio_url);
-    const pathParts = audioUrlObj.pathname.split('/');
-    const recordingsIndex = pathParts.indexOf('recordings');
-    const filePath = pathParts.slice(recordingsIndex + 1).join('/');
-    
-    console.log('File path for download:', filePath);
+    // Fetch the submission to get the audio URL
+    const { data: submission, error: fetchError } = await supabase
+      .from('submissions')
+      .select('*')
+      .eq('id', submissionId)
+      .single();
 
-    // Download the file directly from Supabase Storage using the service role key
-    const { data: fileData, error: downloadError } = await supabase.storage
-      .from('recordings')
-      .download(filePath);
-
-    if (downloadError || !fileData) {
-      throw new Error(`Failed to download audio: ${downloadError?.message || 'unknown'}`);
-    }
-
-    const audioBlob = fileData;
-    
-    // Determine the file extension from URL
-    const urlPath = submission.audio_url.split('?')[0];
-    const lastDotIndex = urlPath.lastIndexOf('.');
-    let fileExtension = 'mp3';
-    
-    if (lastDotIndex !== -1) {
-      const detectedExt = urlPath.substring(lastDotIndex + 1).toLowerCase();
-      const supportedExtensions = ['flac', 'm4a', 'mp3', 'mp4', 'mpeg', 'mpga', 'oga', 'ogg', 'wav', 'webm'];
-      if (supportedExtensions.includes(detectedExt)) {
-        fileExtension = detectedExt;
-      }
+    if (fetchError || !submission) {
+      console.error('Failed to fetch submission:', fetchError);
+      return Response.json({ error: 'Submission not found' }, { status: 404 });
     }
 
     console.log('Audio URL:', submission.audio_url);
-    console.log('Detected extension:', fileExtension);
-    console.log('Blob type:', audioBlob.type);
-    console.log('Blob size:', audioBlob.size);
 
-    // Convert blob to ArrayBuffer then Buffer (Node-compatible)
-    const arrayBuffer = await audioBlob.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    console.log('Buffer length:', buffer.length);
-    console.log('Sending to Whisper as: recording.' + fileExtension);
-
-    // Use OpenAI's toFile helper which properly formats for the API
-    const audioFile = await toFile(buffer, `recording.${fileExtension}`);
-
-    // Send to Whisper
-    const transcription = await openai.audio.transcriptions.create({
-      file: audioFile,
-      model: 'whisper-1',
+    // Submit the audio URL to AssemblyAI for transcription
+    console.log('Submitting to AssemblyAI...');
+    
+    const submitResponse = await fetch('https://api.assemblyai.com/v2/transcript', {
+      method: 'POST',
+      headers: {
+        'authorization': process.env.ASSEMBLYAI_API_KEY,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        audio_url: submission.audio_url,
+        speaker_labels: true,  // Enable speaker diarization
+        language_code: 'en_us'
+      })
     });
 
-    // Save transcript to database
+    const submitResult = await submitResponse.json();
+    
+    if (!submitResponse.ok) {
+      console.error('AssemblyAI submit error:', submitResult);
+      throw new Error(submitResult.error || 'Failed to submit for transcription');
+    }
+
+    const transcriptId = submitResult.id;
+    console.log('AssemblyAI transcript ID:', transcriptId);
+
+    // Poll for transcription completion
+    let transcript = null;
+    let pollAttempts = 0;
+    const maxPollAttempts = 60;  // Max ~5 minutes (60 attempts * 5 seconds)
+    
+    while (pollAttempts < maxPollAttempts) {
+      pollAttempts++;
+      
+      // Wait 5 seconds between polls
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      
+      const pollResponse = await fetch(`https://api.assemblyai.com/v2/transcript/${transcriptId}`, {
+        headers: {
+          'authorization': process.env.ASSEMBLYAI_API_KEY
+        }
+      });
+      
+      const pollResult = await pollResponse.json();
+      console.log(`Poll attempt ${pollAttempts}: status = ${pollResult.status}`);
+      
+      if (pollResult.status === 'completed') {
+        transcript = pollResult;
+        break;
+      } else if (pollResult.status === 'error') {
+        console.error('AssemblyAI transcription error:', pollResult.error);
+        throw new Error(`Transcription failed: ${pollResult.error}`);
+      }
+      // Otherwise still 'queued' or 'processing', keep polling
+    }
+
+    if (!transcript) {
+      throw new Error('Transcription timed out after 5 minutes');
+    }
+
+    // Format the transcript with speaker labels
+    let formattedTranscript = '';
+    
+    if (transcript.utterances && transcript.utterances.length > 0) {
+      // Use speaker-labeled transcript
+      formattedTranscript = transcript.utterances
+        .map(u => `Speaker ${u.speaker}: ${u.text}`)
+        .join('\n\n');
+    } else {
+      // Fallback to plain text if no utterances
+      formattedTranscript = transcript.text || '';
+    }
+
+    console.log('Transcript length:', formattedTranscript.length);
+    console.log('Transcript preview:', formattedTranscript.slice(0, 300));
+
+    // Save the transcript
     const { error: updateError } = await supabase
       .from('submissions')
-      .update({ 
-        transcript: transcription.text,
+      .update({
+        transcript: formattedTranscript,
         status: 'transcribed'
       })
       .eq('id', submissionId);
 
     if (updateError) {
-      throw updateError;
+      console.error('Failed to save transcript:', updateError);
+      throw new Error('Failed to save transcript');
     }
 
-    // Trigger evaluation and wait for it to complete
+    console.log('Transcript saved successfully');
+
+    // Trigger the evaluate route and wait for it
     const host = request.headers.get('host');
     const protocol = host?.includes('localhost') ? 'http' : 'https';
     const baseUrl = `${protocol}://${host}`;
@@ -109,39 +137,38 @@ export async function POST(request) {
     console.log('Triggering evaluation at:', `${baseUrl}/api/evaluate`);
     
     try {
-      const evalResponse = await fetch(`${baseUrl}/api/evaluate`, {
+      const evaluateResponse = await fetch(`${baseUrl}/api/evaluate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ submissionId })
+        body: JSON.stringify({ submissionId: submissionId })
       });
-      const evalResult = await evalResponse.json();
-      console.log('Evaluation response status:', evalResponse.status);
-      console.log('Evaluation result:', JSON.stringify(evalResult).slice(0, 200));
-    } catch (evalErr) {
-      console.error('Evaluate call failed:', evalErr);
+      const evaluateResult = await evaluateResponse.json();
+      console.log('Evaluate response status:', evaluateResponse.status);
+      console.log('Evaluate result:', JSON.stringify(evaluateResult).slice(0, 200));
+    } catch (evaluateErr) {
+      console.error('Evaluate call failed:', evaluateErr);
     }
 
     return Response.json({ 
       success: true, 
-      transcript: transcription.text 
+      transcript: formattedTranscript.slice(0, 500),
+      submissionId: submissionId 
     });
 
   } catch (err) {
-    console.error('Transcription error:', err);
+    console.error('Transcribe route error:', err);
     
-    // Update status to error so we can see it failed
-    if (request) {
-      try {
-        const body = await request.clone().json();
-        if (body.submissionId) {
-          await supabase
-            .from('submissions')
-            .update({ status: 'error: ' + (err.message || 'unknown').slice(0, 200) })
-            .eq('id', body.submissionId);
-        }
-      } catch (e) {
-        // ignore
+    // Try to update submission status to error
+    try {
+      const { submissionId } = await request.json().catch(() => ({}));
+      if (submissionId) {
+        await supabase
+          .from('submissions')
+          .update({ status: `error: ${err.message?.slice(0, 100) || 'transcription failed'}` })
+          .eq('id', submissionId);
       }
+    } catch (e) {
+      // Silent fail on error logging
     }
     
     return Response.json({ 
@@ -150,4 +177,4 @@ export async function POST(request) {
   }
 }
 
-export const maxDuration = 120;
+export const maxDuration = 300;
