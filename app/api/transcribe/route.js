@@ -101,18 +101,25 @@ export async function POST(request) {
       throw updateError;
     }
 
-    // Trigger evaluation in the background
+    // Trigger evaluation and wait for it to complete
     const host = request.headers.get('host');
     const protocol = host?.includes('localhost') ? 'http' : 'https';
     const baseUrl = `${protocol}://${host}`;
     
     console.log('Triggering evaluation at:', `${baseUrl}/api/evaluate`);
     
-    fetch(`${baseUrl}/api/evaluate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ submissionId })
-    }).catch(err => console.error('Evaluate trigger failed:', err));
+    try {
+      const evalResponse = await fetch(`${baseUrl}/api/evaluate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submissionId })
+      });
+      const evalResult = await evalResponse.json();
+      console.log('Evaluation response status:', evalResponse.status);
+      console.log('Evaluation result:', JSON.stringify(evalResult).slice(0, 200));
+    } catch (evalErr) {
+      console.error('Evaluate call failed:', evalErr);
+    }
 
     return Response.json({ 
       success: true, 
@@ -143,4 +150,4 @@ export async function POST(request) {
   }
 }
 
-export const maxDuration = 60;
+export const maxDuration = 120;
