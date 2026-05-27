@@ -46,10 +46,11 @@ export async function POST(request) {
         'authorization': process.env.ASSEMBLYAI_API_KEY,
         'content-type': 'application/json'
       },
-      body: JSON.stringify({
+body: JSON.stringify({
         audio_url: submission.audio_url,
         speaker_labels: true,  // Enable speaker diarization
-        language_code: 'en_us'
+        language_code: 'en_us',
+        speech_model: 'universal-2'
       })
     });
 
