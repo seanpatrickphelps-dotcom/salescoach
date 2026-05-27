@@ -1,7 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
-import { COACHING_SYSTEM_PROMPT } from '../../../lib/coachingPrompt';
 import { Resend } from 'resend';
+import fs from 'fs';
+import path from 'path';
+import { COACHING_SYSTEM_PROMPT } from '../../../lib/coachingPrompt';
 import { generateCoachingEmail } from '../../../lib/emailTemplate';
 
 const supabase = createClient(
@@ -15,33 +17,46 @@ const anthropic = new Anthropic({
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+// Load all knowledge files from /knowledge folder at runtime
+function loadKnowledgeBase() {
+  try {
+    const knowledgeDir = path.join(process.cwd(), 'knowledge');
+    
+    if (!fs.existsSync(knowledgeDir)) {
+      console.log('Knowledge directory not found, proceeding without it');
+      return '';
+    }
+    
+    const files = fs.readdirSync(knowledgeDir).filter(f => f.endsWith('.md'));
+    console.log('Loading knowledge files:', files);
+    
+    const contents = files.map(file => {
+      const filePath = path.join(knowledgeDir, file);
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const fileName = file.replace('.md', '').toUpperCase();
+      return `===== ${fileName} =====\n${content}\n\n`;
+    }).join('');
+    
+    console.log('Knowledge base loaded, total length:', contents.length);
+    return contents;
+  } catch (err) {
+    console.error('Error loading knowledge base:', err);
+    return '';
+  }
+}
+
 export async function POST(request) {
   console.log('===== EVALUATE ROUTE STARTED =====');
   console.log('ANTHROPIC_API_KEY exists:', !!process.env.ANTHROPIC_API_KEY);
-  console.log('ANTHROPIC_API_KEY length:', process.env.ANTHROPIC_API_KEY?.length || 0);
+  console.log('ANTHROPIC_API_KEY length:', process.env.ANTHROPIC_API_KEY?.length);
   console.log('RESEND_API_KEY exists:', !!process.env.RESEND_API_KEY);
-  
+
   try {
     const { submissionId } = await request.json();
     console.log('Received submissionId:', submissionId);
-
+    
     if (!submissionId) {
-      return Response.json({ error: 'No submission ID provided' }, { status: 400 });
-    }
-
-    // Get the submission
-    const { data: submission, error: fetchError } = await supabase
-      .from('submissions')
-      .select('*')
-      .eq('id', submissionId)
-      .single();
-
-    if (fetchError || !submission) {
-      return Response.json({ error: 'Submission not found' }, { status: 404 });
-    }
-
-    if (!submission.transcript) {
-      return Response.json({ error: 'No transcript to evaluate' }, { status: 400 });
+      return Response.json({ error: 'Missing submissionId' }, { status: 400 });
     }
 
     // Update status to evaluating
@@ -50,62 +65,117 @@ export async function POST(request) {
       .update({ status: 'evaluating' })
       .eq('id', submissionId);
 
+    // Fetch the submission
+    const { data: submission, error: fetchError } = await supabase
+      .from('submissions')
+      .select('*')
+      .eq('id', submissionId)
+      .single();
+
+    if (fetchError || !submission) {
+      console.error('Failed to fetch submission:', fetchError);
+      return Response.json({ error: 'Submission not found' }, { status: 404 });
+    }
+
     console.log('Evaluating submission:', submissionId);
-    console.log('Transcript length:', submission.transcript.length);
+    console.log('Transcript length:', submission.transcript?.length || 0);
 
-    // Send to Claude
-    const userMessage = `Outcome: ${submission.outcome}\n\nTRANSCRIPT:\n${submission.transcript}`;
+    if (!submission.transcript) {
+      throw new Error('No transcript available for evaluation');
+    }
 
-    const response = await anthropic.messages.create({
+    // Load the knowledge base
+    const knowledgeBase = loadKnowledgeBase();
+
+    // Build the user message with full context
+    const userMessage = `${knowledgeBase ? `===== COLLEGE WORKS KNOWLEDGE BASE =====\n\n${knowledgeBase}\n\n` : ''}===== APPOINTMENT TO EVALUATE =====
+
+OUTCOME REPORTED BY REP: ${submission.outcome}
+
+TRANSCRIPT:
+${submission.transcript}
+
+===== END OF APPOINTMENT =====
+
+Now evaluate this appointment against the College Works methodology and return your coaching feedback as JSON per the format specified in your instructions.`;
+
+    // Call Claude
+    console.log('Calling Claude for evaluation...');
+    const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
+      max_tokens: 2500,
       system: COACHING_SYSTEM_PROMPT,
       messages: [
         { role: 'user', content: userMessage }
       ],
     });
 
-    const responseText = response.content
-      .filter(block => block.type === 'text')
-      .map(block => block.text)
-      .join('');
-
+    const responseText = message.content[0].text;
     console.log('Claude response received, length:', responseText.length);
 
     // Parse the JSON response
-    const cleaned = responseText.replace(/```json|```/g, '').trim();
     let feedback;
     try {
+      // Strip any markdown code fences if Claude added them
+      const cleaned = responseText
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/```\s*$/i, '')
+        .trim();
       feedback = JSON.parse(cleaned);
     } catch (parseErr) {
-      console.error('Failed to parse Claude response:', responseText);
+      console.error('Failed to parse Claude response:', parseErr);
+      console.error('Response was:', responseText.slice(0, 500));
       throw new Error('Claude returned invalid JSON');
     }
 
-    // Save feedback to database
+    // Validate required fields
+    if (!feedback.overall_score || !feedback.headline || !feedback.categories) {
+      console.error('Feedback missing required fields:', Object.keys(feedback));
+      throw new Error('Feedback response is incomplete');
+    }
+
+    // Save the feedback to the database
     const { error: updateError } = await supabase
       .from('submissions')
-      .update({ 
+      .update({
+        status: 'completed',
         feedback: feedback,
-        overall_score: feedback.overall_score,
-        status: 'completed'
+        overall_score: feedback.overall_score
       })
       .eq('id', submissionId);
 
     if (updateError) {
-      throw updateError;
+      console.error('Failed to save feedback:', updateError);
+      throw new Error('Failed to save feedback to database');
     }
 
     console.log('Evaluation saved successfully');
 
-    // Send coaching email
+    // Send the coaching email
     try {
-      const emailHtml = generateCoachingEmail(feedback, submission.rep_email, submission.outcome);
+      // Clean the email address defensively
+      const cleanEmail = (submission.rep_email || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[<>]/g, '')
+        .replace(/^.*?([\w.-]+@[\w.-]+\.\w+).*$/, '$1');
+      
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      
+      if (!emailRegex.test(cleanEmail)) {
+        console.error('Invalid email in submission:', submission.rep_email);
+        throw new Error(`Invalid email format: ${submission.rep_email}`);
+      }
+      
+      console.log('Sending coaching email to:', cleanEmail);
+      
+      const emailHtml = generateCoachingEmail(feedback, cleanEmail, submission.outcome);
       
       const { data: emailData, error: emailError } = await resend.emails.send({
-      from: 'Coach Sean <sean@collegeworkscoach.com>',
-        to: submission.rep_email,
-        subject: `Today's estimate breakdown ${feedback.overall_score.toFixed(1)}/10`,
+        from: 'Coach Sean <sean@collegeworkscoach.com>',
+        to: cleanEmail,
+        subject: `Today's estimate breakdown - ${feedback.overall_score.toFixed(1)}/10`,
         html: emailHtml,
       });
 
@@ -116,30 +186,35 @@ export async function POST(request) {
       }
     } catch (emailErr) {
       console.error('Email send failed:', emailErr);
+      // Don't throw. Feedback is already saved, email failure shouldn't block success.
     }
 
     return Response.json({ 
       success: true, 
-      feedback: feedback 
+      feedback: feedback,
+      submissionId: submissionId 
     });
 
   } catch (err) {
-    console.error('Evaluation error:', err);
-
+    console.error('Evaluate route error:', err);
+    
+    // Try to update submission status to error
     try {
-      const body = await request.clone().json();
-      if (body.submissionId) {
+      const { submissionId } = await request.json().catch(() => ({}));
+      if (submissionId) {
         await supabase
           .from('submissions')
-          .update({ status: 'error: eval - ' + (err.message || 'unknown').slice(0, 150) })
-          .eq('id', body.submissionId);
+          .update({ status: `error: ${err.message?.slice(0, 100) || 'evaluation failed'}` })
+          .eq('id', submissionId);
       }
-    } catch (e) {}
-
+    } catch (e) {
+      // Silent fail on error logging
+    }
+    
     return Response.json({ 
       error: err.message || 'Evaluation failed' 
     }, { status: 500 });
   }
 }
 
-export const maxDuration = 60;
+export const maxDuration = 120;
