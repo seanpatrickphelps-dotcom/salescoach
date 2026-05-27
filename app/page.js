@@ -385,23 +385,28 @@ export default function Home() {
                 color: '#004DE1', marginBottom: '10px',
                 textTransform: 'uppercase', letterSpacing: '2px'
               }}>How did it end?</label>
-            <select
+<select
                 value={outcome}
                 onChange={(e) => setOutcome(e.target.value)}
                 style={{ 
                   width: '100%', padding: '16px 18px', border: '2px solid #DBE2E9', 
-                  ...
+                  fontSize: '16px', fontFamily: 'inherit', fontWeight: '500',
+                  color: '#000000', background: 'white', outline: 'none',
+                  appearance: 'none',
+                  backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'8\'%3E%3Cpath fill=\'%23004DE1\' d=\'M6 8L0 0h12z\'/%3E%3C/svg%3E")',
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 18px center',
                   paddingRight: '44px', boxSizing: 'border-box', cursor: 'pointer'
                 }}
               >
-           <option>Booked on the spot</option>
+                <option>Booked on the spot</option>
                 <option>Booked on call back</option>
                 <option>Think about it</option>
+                <option>Other estimates</option>
                 <option>Missing decision maker</option>
                 <option>Price too high</option>
                 <option>Not painting</option>
                 <option>Can't do the job right</option>
-                <option>Other estimates</option>
                 <option>Went with other contractor</option>
               </select>
             </div>
