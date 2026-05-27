@@ -162,7 +162,113 @@ Then GET THE AUTHORIZATION AND PICK UP THE CHECK.
 ## Targets
 - 50% or higher lead conversion
 - 30% booking rate (50% for top performers)
-- $3,500 average job size
+- $6000 average job size
 - 20+ points per week
 - Sit-down length: 45 minutes minimum inside the home with the client
 - Walk-around: necessary to develop need and create urgency
+# Methodology Additions (2026 Training Curriculum + Field Application)
+
+> **For collegeworkscoach.com knowledge base.** APPEND this content to your existing `knowledge/methodology.md` file (don't create a separate file; you already have methodology.md). Sourced from the 2026 Great Plains training deck and top-performer field application. Add Field Position Theory, the walk-around structure, and the five close types to whatever's already in your methodology file.
+
+## Field Position Theory (10 Steps to a Won Estimate)
+
+Every estimate moves through a defined sequence. Each step earns the right to the next. Skipping steps is the single most common reason estimates fail to close.
+
+1. **I-Call / Setting at the Door**: set up a winnable estimate with both decision-makers present
+2. **Confirmation Call**: typically Thursday before the estimate
+3. **Pre-Estimate Packet**: drop off materials, second touchpoint, lets them see the rep again
+4. **Rapport**: 20+ minutes minimum on first 25 estimates, 30-45 minutes after
+5. **Trigger Questions**: transition from rapport into the Client Manual
+6. **Client Manual**: credibility, differentiation, paint products, warranties, before/after, reference letters
+7. **Pre-Close**: "Besides the price, is there anything that would keep you from reserving one of my last few spots and taking advantage of the 10% discount today?"
+8. **Walk-Around**: 4 sides of the house, NSSC applied per side
+9. **Ballpark**: give ranges per option before finalizing numbers
+10. **Present Contract + Close**: walk through options, emphasize discount, close
+
+## Needs Satisfaction Selling Cycle (NSSC)
+
+NSSC is the spine of every sales conversation. The six steps cycle through every side of the walk-around and through the closing conversation.
+
+1. Identify the need
+2. Develop the need
+3. Show your solution
+4. Summarize benefits
+5. Assume the sale
+6. Close, close, close
+
+Throughout every step: build rapport, be assumptive, handle objections.
+
+## 200k Triangle
+
+The 200k Triangle is the visual reminder for NSSC. The interns who hit $200k consistently apply all six steps every time, not just steps 1, 3 and 5.
+
+## F.O.R.D. (Rapport Framework)
+
+The rapport framework for the sit-down and walk-around. Listen for what they want to talk about and stay there.
+
+- **F**amily (kids, dogs, extended family)
+- **O**ccupation
+- **R**ecreation
+- **D**reams
+
+### Rivers and Streams Principle
+
+Treat conversation topics as rivers and streams. When you find one they care about, follow it. A small stream of interest can turn into a waterfall of rapport. The best way to book a job is to get them to like you. Look around the house and at their Facebook beforehand to find topics.
+
+First question to ask: "How long have you lived here?"
+
+## The 6-Step Estimate Process
+
+The estimate runs in this order. Skipping the sit-down or going straight to the walk-around is the single biggest cause of low close rates.
+
+1. **Build rapport**: F.O.R.D., conversation starters, mirror their energy
+2. **Stump speech**: your why, your goal for the visit, set expectations
+3. **Client Manual**: trigger questions, listen, dig deeper, address needs
+4. **Discuss colors**: visualization questions, design consultation, two-coat framing
+5. **Build urgency**: scheduling, sample agreement, 10% pre-close
+6. **Explain pricing**: labor, materials, insurance, hours (clarify the homeowner controls the hours)
+7. **Discuss problem areas**: walk-around, NSSC per side, two paint-related issues per side
+
+## Walk-Around (4-Side Structure)
+
+Each side of the house gets a focus. NSSC is applied on every side.
+
+- **Side 1: Wash**: power wash (or hose plus wet-rag for lead). Compare caulking vs no caulking.
+- **Side 2: Prep process**: compare power wash to scrape vs hand scraping. Compare sanding vs primer only (no sanding on pre-1978). Compare priming vs just painting. Compare paint types.
+- **Side 3: Colors and prep**: pick another piece of prep to explain
+- **Side 4: Pre-Close**: "If I include everything we talked about and it's a reasonable price, would you like to reserve a spot today and take advantage of that 10% discount?"
+
+Two paint-related issues identified per side. Build rapport at the corners of the property.
+
+## Five Types of Closes
+
+Top performers cycle through these based on the homeowner's energy. None of them are tricks; they're invitations to a yes.
+
+- **Easy lead-in:** "So all I need is a deposit and your autograph here, and we can reserve your spot for the summer."
+- **Blank order:** Set the pen down on the contract and wait.
+- **Major/minor close:** "Will you be looking to include the shed in this as well?"
+- **Alternate choice:** "Would you like us to schedule you for early summer, mid-summer, or late summer?"
+- **Whatever it takes:** "What's it going to take for me to paint your home this summer?"
+
+## The 5-Step Close
+
+When a homeowner says "think about it" (which is not a real objection), walk them through this sequence. Each yes builds momentum to the final yes.
+
+1. Do you like the company and what it has to offer?
+2. Do you think I am the right person for this job?
+3. Is this the type of quality you're looking for?
+4. Does this price sound fair for what I am offering?
+5. Do you want this job done this year?
+
+If they say yes to the first four, the fifth becomes hard to say no to.
+
+## Key Coaching Principles
+
+- Under promise, over deliver
+- Manage expectations
+- Speak professionally and confidently
+- Assume the sale
+- Mirror your client's energy
+- Be the FIRST estimate (aggressive marketing wins this) AND close on the spot (callbacks are much harder)
+- The most crucial time to close is BEFORE the estimate is presented (pre-close at the end of the sit-down)
+- Use the "If/Then would you at least consider" structure to bridge any objection back to the close
