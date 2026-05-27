@@ -36,7 +36,18 @@ export async function POST(request) {
     }
     
     const submission = submissions[0];
-    console.log('Found submission:', submission.id);
+    console.log('Found submission:', submission.id, 'Current status:', submission.status);
+    
+    // IDEMPOTENCY CHECK: Already processed? Skip duplicate webhook calls.
+    if (submission.status === 'completed' || 
+        submission.status === 'evaluating' || 
+        submission.status === 'transcribed') {
+      console.log('Submission already processed (status: ' + submission.status + '). Skipping duplicate webhook.');
+      return Response.json({ 
+        success: true, 
+        message: 'Already processed, ignored duplicate webhook'
+      });
+    }
     
     // Handle error status
     if (status === 'error') {
@@ -76,18 +87,30 @@ export async function POST(request) {
     
     console.log('Transcript length:', formattedTranscript.length);
     
-    // Save the transcript
-    const { error: updateError } = await supabase
+    // ATOMIC UPDATE: Set status to 'transcribed' ONLY if it's still 'transcribing'
+    // This prevents race conditions where two webhooks fire simultaneously
+    const { data: updateData, error: updateError } = await supabase
       .from('submissions')
       .update({
         transcript: formattedTranscript,
         status: 'transcribed'
       })
-      .eq('id', submission.id);
+      .eq('id', submission.id)
+      .eq('status', 'transcribing')  // Only update if still in 'transcribing' state
+      .select();
     
     if (updateError) {
       console.error('Failed to save transcript:', updateError);
       throw new Error('Failed to save transcript');
+    }
+    
+    // If no rows were updated, another webhook beat us to it
+    if (!updateData || updateData.length === 0) {
+      console.log('Another webhook call already updated this submission. Skipping evaluation trigger.');
+      return Response.json({ 
+        success: true, 
+        message: 'Already processed by another webhook call' 
+      });
     }
     
     console.log('Transcript saved successfully');
