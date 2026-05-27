@@ -1,20 +1,21 @@
 {
-  "name": "sales-coach",
+  "name": "salescoach",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "lint": "next lint"
   },
-"dependencies": {
-    "@anthropic-ai/sdk": "...",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.30.0",
     "@breezystack/lamejs": "^1.1.0",
-    "@supabase/supabase-js": "...",
-    "next": "...",
-    "openai": "...",
-    "react": "...",
-    "react-dom": "...",
-    "resend": "..."
-}
+    "@supabase/supabase-js": "^2.45.0",
+    "next": "14.2.0",
+    "openai": "^4.55.0",
+    "react": "^18",
+    "react-dom": "^18",
+    "resend": "^4.0.0"
+  }
 }
