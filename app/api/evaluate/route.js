@@ -52,7 +52,7 @@ export async function POST(request) {
     const userMessage = `Outcome: ${submission.outcome}\n\nTRANSCRIPT:\n${submission.transcript}`;
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 2000,
       system: COACHING_SYSTEM_PROMPT,
       messages: [
