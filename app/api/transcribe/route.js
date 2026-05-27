@@ -37,7 +37,12 @@ export async function POST(request) {
 
     console.log('Audio URL:', submission.audio_url);
 
-    // Submit the audio URL to AssemblyAI for transcription
+    // Build the webhook URL for AssemblyAI to call when done
+    const host = request.headers.get('host');
+    const protocol = host?.includes('localhost') ? 'http' : 'https';
+    const webhookUrl = `${protocol}://${host}/api/webhook/assemblyai`;
+    
+    console.log('Webhook URL:', webhookUrl);
     console.log('Submitting to AssemblyAI...');
     
     const submitResponse = await fetch('https://api.assemblyai.com/v2/transcript', {
@@ -50,7 +55,8 @@ export async function POST(request) {
         audio_url: submission.audio_url,
         speaker_labels: true,
         language_code: 'en_us',
-        speech_models: ['universal-2']
+        speech_models: ['universal-2'],
+        webhook_url: webhookUrl
       })
     });
 
@@ -64,96 +70,25 @@ export async function POST(request) {
     const transcriptId = submitResult.id;
     console.log('AssemblyAI transcript ID:', transcriptId);
 
-    // Poll for transcription completion
-    let transcript = null;
-    let pollAttempts = 0;
-    const maxPollAttempts = 60;  // Max ~5 minutes (60 attempts * 5 seconds)
-    
-    while (pollAttempts < maxPollAttempts) {
-      pollAttempts++;
-      
-      // Wait 5 seconds between polls
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      
-      const pollResponse = await fetch(`https://api.assemblyai.com/v2/transcript/${transcriptId}`, {
-        headers: {
-          'authorization': process.env.ASSEMBLYAI_API_KEY
-        }
-      });
-      
-      const pollResult = await pollResponse.json();
-      console.log(`Poll attempt ${pollAttempts}: status = ${pollResult.status}`);
-      
-      if (pollResult.status === 'completed') {
-        transcript = pollResult;
-        break;
-      } else if (pollResult.status === 'error') {
-        console.error('AssemblyAI transcription error:', pollResult.error);
-        throw new Error(`Transcription failed: ${pollResult.error}`);
-      }
-      // Otherwise still 'queued' or 'processing', keep polling
-    }
-
-    if (!transcript) {
-      throw new Error('Transcription timed out after 5 minutes');
-    }
-
-    // Format the transcript with speaker labels
-    let formattedTranscript = '';
-    
-    if (transcript.utterances && transcript.utterances.length > 0) {
-      // Use speaker-labeled transcript
-      formattedTranscript = transcript.utterances
-        .map(u => `Speaker ${u.speaker}: ${u.text}`)
-        .join('\n\n');
-    } else {
-      // Fallback to plain text if no utterances
-      formattedTranscript = transcript.text || '';
-    }
-
-    console.log('Transcript length:', formattedTranscript.length);
-    console.log('Transcript preview:', formattedTranscript.slice(0, 300));
-
-    // Save the transcript
+    // Save the transcript ID so the webhook can find this submission later
     const { error: updateError } = await supabase
       .from('submissions')
-      .update({
-        transcript: formattedTranscript,
-        status: 'transcribed'
+      .update({ 
+        assemblyai_transcript_id: transcriptId 
       })
       .eq('id', submissionId);
-
+    
     if (updateError) {
-      console.error('Failed to save transcript:', updateError);
-      throw new Error('Failed to save transcript');
+      console.error('Failed to save transcript ID:', updateError);
     }
 
-    console.log('Transcript saved successfully');
+    console.log('Transcript ID saved. Waiting for webhook callback...');
 
-    // Trigger the evaluate route and wait for it
-    const host = request.headers.get('host');
-    const protocol = host?.includes('localhost') ? 'http' : 'https';
-    const baseUrl = `${protocol}://${host}`;
-    
-    console.log('Triggering evaluation at:', `${baseUrl}/api/evaluate`);
-    
-    try {
-      const evaluateResponse = await fetch(`${baseUrl}/api/evaluate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ submissionId: submissionId })
-      });
-      const evaluateResult = await evaluateResponse.json();
-      console.log('Evaluate response status:', evaluateResponse.status);
-      console.log('Evaluate result:', JSON.stringify(evaluateResult).slice(0, 200));
-    } catch (evaluateErr) {
-      console.error('Evaluate call failed:', evaluateErr);
-    }
-
+    // Return immediately. AssemblyAI will call our webhook when transcription is done.
     return Response.json({ 
       success: true, 
-      transcript: formattedTranscript.slice(0, 500),
-      submissionId: submissionId 
+      message: 'Transcription started. Webhook will fire when complete.',
+      transcriptId: transcriptId
     });
 
   } catch (err) {
@@ -178,4 +113,4 @@ export async function POST(request) {
   }
 }
 
-export const maxDuration = 300;
+export const maxDuration = 30;
