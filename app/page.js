@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { supabase } from '../lib/supabase';
 
 export default function Home() {
   const [email, setEmail] = useState('');
@@ -21,44 +20,26 @@ export default function Home() {
     setStatus('uploading');
 
     try {
-     const fileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('recordings')
-        .upload(fileName, file, {
-          contentType: file.type || 'audio/mpeg',
-          upsert: false
-        });
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('email', email);
+      formData.append('outcome', outcome);
 
-      if (uploadError) throw uploadError;
-
-      const { data: urlData } = supabase.storage
-        .from('recordings')
-        .getPublicUrl(fileName);
-
-      const { data: insertData, error: insertError } = await supabase
-        .from('submissions')
-        .insert({
-          rep_email: email,
-          audio_url: urlData.publicUrl,
-          outcome: outcome,
-          status: 'uploaded'
-        })
-        .select()
-        .single();
-
-      if (insertError) throw insertError;
-
-      // Trigger transcription in the background
-      fetch('/api/transcribe', {
+      const response = await fetch('/api/upload', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ submissionId: insertData.id })
+        body: formData
       });
 
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Upload failed');
+      }
+
       setStatus('success');
- } catch (err) {
+    } catch (err) {
       setStatus('error');
-      setErrorMsg(`Error: ${err.message || 'Unknown'} | Type: ${err.name || 'none'} | Details: ${JSON.stringify(err).slice(0, 300)}`);
+      setErrorMsg(`Error: ${err.message || 'Unknown'} | Details: ${JSON.stringify(err).slice(0, 300)}`);
       console.error('Full error:', err);
     }
   };
