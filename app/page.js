@@ -12,17 +12,15 @@ const supabase = createClient(
 async function compressAudio(file) {
   return new Promise(async (resolve, reject) => {
     try {
-      // Dynamically import lamejs (only needed when compression is required)
       const lamejs = await import('@breezystack/lamejs');
       
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
       const arrayBuffer = await file.arrayBuffer();
       const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
       
-      // Downsample to mono 16kHz
       const targetSampleRate = 16000;
       const offlineContext = new OfflineAudioContext(
-        1, // mono
+        1,
         Math.ceil(audioBuffer.duration * targetSampleRate),
         targetSampleRate
       );
@@ -34,20 +32,16 @@ async function compressAudio(file) {
       
       const renderedBuffer = await offlineContext.startRendering();
       
-      // Encode to MP3 at 32kbps (plenty for speech recognition)
       const channelData = renderedBuffer.getChannelData(0);
-      
-      // Convert Float32 to Int16 (what lamejs needs)
       const samples = new Int16Array(channelData.length);
       for (let i = 0; i < channelData.length; i++) {
         const sample = Math.max(-1, Math.min(1, channelData[i]));
         samples[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
       }
       
-      // mp3encoder: (channels, sampleRate, kbps)
       const mp3encoder = new lamejs.Mp3Encoder(1, targetSampleRate, 32);
       const mp3Data = [];
-      const blockSize = 1152; // standard MP3 frame size
+      const blockSize = 1152;
       
       for (let i = 0; i < samples.length; i += blockSize) {
         const sampleChunk = samples.subarray(i, i + blockSize);
@@ -57,7 +51,6 @@ async function compressAudio(file) {
         }
       }
       
-      // Finalize
       const mp3buf = mp3encoder.flush();
       if (mp3buf.length > 0) {
         mp3Data.push(mp3buf);
@@ -80,6 +73,8 @@ export default function Home() {
   const [status, setStatus] = useState('idle');
   const [errorMsg, setErrorMsg] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
+  const [consentChecked, setConsentChecked] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
   const handleSubmit = async () => {
     setErrorMsg('');
@@ -96,11 +91,16 @@ export default function Home() {
       return;
     }
 
+    // Confirm consent checkbox
+    if (!consentChecked) {
+      setErrorMsg('Please confirm consent before submitting.');
+      return;
+    }
+
     setStatus('uploading');
     setStatusMsg('Uploading...');
 
     try {
-      // Sanitize filename
       const safeName = file.name.replace(/[^\w.-]/g, '_');
       const fileName = `${Date.now()}-${safeName.replace(/\.[^.]+$/, '')}.mp3`;
       
@@ -109,8 +109,6 @@ export default function Home() {
       let uploadFile = file;
       const TWENTY_FIVE_MB = 25 * 1024 * 1024;
 
-      // Compress audio if larger than 25MB (Whisper's hard limit)
-      // Also compress if not already mp3, to ensure consistent format
       if (file.size > TWENTY_FIVE_MB) {
         console.log('File over 25MB, compressing to MP3...');
         setStatusMsg('Compressing recording...');
@@ -126,7 +124,6 @@ export default function Home() {
         }
       }
 
-      // Upload DIRECTLY to Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('recordings')
         .upload(fileName, uploadFile, {
@@ -141,12 +138,10 @@ export default function Home() {
       console.log('File uploaded to storage');
       setStatusMsg('Processing...');
 
-      // Get public URL
       const { data: urlData } = supabase.storage
         .from('recordings')
         .getPublicUrl(fileName);
 
-      // Create submission record AND trigger processing
       const response = await fetch('/api/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -158,7 +153,6 @@ export default function Home() {
         })
       });
 
-      // Read response as text first to safely handle non-JSON errors
       const responseText = await response.text();
       
       let result;
@@ -179,7 +173,6 @@ export default function Home() {
       
       let userMessage = err.message || 'please try again';
       
-      // Handle common errors with friendly messages
       if (userMessage.toLowerCase().includes('string did not match') || 
           userMessage.toLowerCase().includes('expected pattern')) {
         userMessage = 'Your recording is stored in the cloud. Save it to your phone first, then upload. Or record directly with Voice Memos.';
@@ -250,6 +243,7 @@ export default function Home() {
                 setFile(null);
                 setEmail('');
                 setStatusMsg('');
+                setConsentChecked(false);
               }}
               style={{ 
                 background: '#FF8200', color: 'white', border: 'none', 
@@ -379,13 +373,13 @@ export default function Home() {
               </div>
             </div>
 
-            <div style={{ marginBottom: '32px' }}>
+            <div style={{ marginBottom: '24px' }}>
               <label style={{ 
                 display: 'block', fontSize: '11px', fontWeight: '800',
                 color: '#004DE1', marginBottom: '10px',
                 textTransform: 'uppercase', letterSpacing: '2px'
               }}>How did it end?</label>
-<select
+              <select
                 value={outcome}
                 onChange={(e) => setOutcome(e.target.value)}
                 style={{ 
@@ -409,6 +403,43 @@ export default function Home() {
                 <option>Can't do the job right</option>
                 <option>Went with other contractor</option>
               </select>
+            </div>
+
+            {/* Consent Checkbox */}
+            <div style={{ marginBottom: '24px', padding: '16px', background: '#fafbfc', border: '1px solid #DBE2E9' }}>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={consentChecked}
+                  onChange={(e) => setConsentChecked(e.target.checked)}
+                  style={{
+                    marginTop: '3px',
+                    width: '18px',
+                    height: '18px',
+                    accentColor: '#004DE1',
+                    cursor: 'pointer',
+                    flexShrink: 0
+                  }}
+                />
+                <span style={{ fontSize: '13px', color: '#4b5563', lineHeight: '1.5', fontWeight: '500' }}>
+                  I confirm this is a recording of an in-home estimate, I had consent from the homeowner(s) to record, and I understand this audio will be processed by AI and stored.{' '}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); setShowPrivacyModal(true); }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#004DE1',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      padding: 0,
+                      fontFamily: 'inherit',
+                      fontSize: '13px',
+                      textDecoration: 'underline'
+                    }}
+                  >Read privacy notice.</button>
+                </span>
+              </label>
             </div>
 
             <button
@@ -460,6 +491,163 @@ export default function Home() {
             fontWeight: '700', paddingBottom: '32px'
           }}>Success is in session.</div>
         </div>
+
+        {/* Privacy Modal */}
+        {showPrivacyModal && (
+          <div 
+            onClick={() => setShowPrivacyModal(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.6)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '24px',
+              zIndex: 1000
+            }}
+          >
+            <div 
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: 'white',
+                maxWidth: '560px',
+                width: '100%',
+                maxHeight: '85vh',
+                overflowY: 'auto',
+                padding: '36px 32px'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+                <h2 style={{ 
+                  margin: 0, 
+                  color: '#000000', 
+                  fontSize: '28px', 
+                  fontWeight: '800', 
+                  letterSpacing: '-0.5px',
+                  lineHeight: '1.1'
+                }}>Privacy notice.</h2>
+                <button
+                  onClick={() => setShowPrivacyModal(false)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    fontSize: '24px',
+                    color: '#9ca3af',
+                    cursor: 'pointer',
+                    padding: 0,
+                    lineHeight: 1,
+                    marginLeft: '16px'
+                  }}
+                >×</button>
+              </div>
+
+              <div style={{ fontSize: '14px', color: '#1f2937', lineHeight: '1.65' }}>
+                
+                <p style={{ marginBottom: '20px' }}>
+                  By submitting a recording to College Works Coach, you confirm and agree to the following.
+                </p>
+
+                <div style={{ 
+                  fontSize: '11px', 
+                  color: '#004DE1', 
+                  fontWeight: '800', 
+                  letterSpacing: '2px', 
+                  textTransform: 'uppercase', 
+                  marginBottom: '8px',
+                  marginTop: '24px'
+                }}>Consent To Record</div>
+                <p style={{ marginBottom: '16px' }}>
+                  You confirm that you obtained consent from all parties present to be recorded during your in-home estimate appointment, in accordance with the recording laws of the state where the appointment took place. You are responsible for compliance with applicable consent laws.
+                </p>
+
+                <div style={{ 
+                  fontSize: '11px', 
+                  color: '#004DE1', 
+                  fontWeight: '800', 
+                  letterSpacing: '2px', 
+                  textTransform: 'uppercase', 
+                  marginBottom: '8px',
+                  marginTop: '24px'
+                }}>How Your Recording Is Used</div>
+                <p style={{ marginBottom: '16px' }}>
+                  Your recording is transcribed by an automated transcription service, evaluated by AI against the College Works sales methodology, and delivered as coaching feedback to the email address you provided.
+                </p>
+
+                <div style={{ 
+                  fontSize: '11px', 
+                  color: '#004DE1', 
+                  fontWeight: '800', 
+                  letterSpacing: '2px', 
+                  textTransform: 'uppercase', 
+                  marginBottom: '8px',
+                  marginTop: '24px'
+                }}>Storage And Retention</div>
+                <p style={{ marginBottom: '16px' }}>
+                  Audio recordings are stored securely and may be retained for up to 30 days for quality and training purposes, after which they are automatically deleted. Transcripts and coaching feedback are retained longer for your reference and to track progress over time.
+                </p>
+
+                <div style={{ 
+                  fontSize: '11px', 
+                  color: '#004DE1', 
+                  fontWeight: '800', 
+                  letterSpacing: '2px', 
+                  textTransform: 'uppercase', 
+                  marginBottom: '8px',
+                  marginTop: '24px'
+                }}>What Not To Upload</div>
+                <p style={{ marginBottom: '16px' }}>
+                  Do not upload recordings containing sensitive personal information, medical conversations, financial account details, or content unrelated to your in-home estimate appointment.
+                </p>
+
+                <div style={{ 
+                  fontSize: '11px', 
+                  color: '#004DE1', 
+                  fontWeight: '800', 
+                  letterSpacing: '2px', 
+                  textTransform: 'uppercase', 
+                  marginBottom: '8px',
+                  marginTop: '24px'
+                }}>Deletion Requests</div>
+                <p style={{ marginBottom: '16px' }}>
+                  To request deletion of a submission or any associated data, email sean@collegeworkscoach.com with the relevant details.
+                </p>
+
+                <div style={{ 
+                  fontSize: '11px', 
+                  color: '#004DE1', 
+                  fontWeight: '800', 
+                  letterSpacing: '2px', 
+                  textTransform: 'uppercase', 
+                  marginBottom: '8px',
+                  marginTop: '24px'
+                }}>Questions</div>
+                <p style={{ marginBottom: '24px' }}>
+                  Contact sean@collegeworkscoach.com with any questions about how your data is used or stored.
+                </p>
+
+              </div>
+
+              <button
+                onClick={() => setShowPrivacyModal(false)}
+                style={{
+                  width: '100%',
+                  padding: '16px',
+                  background: '#004DE1',
+                  color: 'white',
+                  border: 'none',
+                  fontSize: '13px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  letterSpacing: '2px',
+                  textTransform: 'uppercase',
+                  marginTop: '8px'
+                }}
+              >Got It</button>
+            </div>
+          </div>
+        )}
       </main>
     </>
   );
