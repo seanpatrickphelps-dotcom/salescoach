@@ -53,9 +53,10 @@ export default function Home() {
       });
 
       setStatus('success');
-    } catch (err) {
+ } catch (err) {
       setStatus('error');
-      setErrorMsg(err.message || 'Something went wrong.');
+      setErrorMsg(`Error: ${err.message || 'Unknown'} | Type: ${err.name || 'none'} | Details: ${JSON.stringify(err).slice(0, 300)}`);
+      console.error('Full error:', err);
     }
   };
 
