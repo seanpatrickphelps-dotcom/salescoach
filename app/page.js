@@ -21,10 +21,13 @@ export default function Home() {
     setStatus('uploading');
 
     try {
-      const fileName = `${Date.now()}-${file.name}`;
+     const fileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('recordings')
-        .upload(fileName, file);
+        .upload(fileName, file, {
+          contentType: file.type || 'audio/mpeg',
+          upsert: false
+        });
 
       if (uploadError) throw uploadError;
 
