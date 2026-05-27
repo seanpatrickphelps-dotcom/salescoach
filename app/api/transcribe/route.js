@@ -35,19 +35,55 @@ export async function POST(request) {
       .update({ status: 'transcribing' })
       .eq('id', submissionId);
 
-   // Download the audio file from Supabase Storage
+    // Download the audio file from Supabase Storage
     const audioResponse = await fetch(submission.audio_url);
+    
+    if (!audioResponse.ok) {
+      throw new Error(`Failed to download audio: ${audioResponse.status}`);
+    }
+
     const audioBlob = await audioResponse.blob();
     
-    // Extract the file extension from the audio URL
+    // Determine the file extension from URL
     const urlPath = submission.audio_url.split('?')[0];
-    const fileExtension = urlPath.split('.').pop().toLowerCase();
+    const lastDotIndex = urlPath.lastIndexOf('.');
+    let fileExtension = 'mp3';
     
-    // Map to a supported format name
-    const supportedExtensions = ['flac', 'm4a', 'mp3', 'mp4', 'mpeg', 'mpga', 'oga', 'ogg', 'wav', 'webm'];
-    const safeExtension = supportedExtensions.includes(fileExtension) ? fileExtension : 'mp3';
+    if (lastDotIndex !== -1) {
+      const detectedExt = urlPath.substring(lastDotIndex + 1).toLowerCase();
+      const supportedExtensions = ['flac', 'm4a', 'mp3', 'mp4', 'mpeg', 'mpga', 'oga', 'ogg', 'wav', 'webm'];
+      if (supportedExtensions.includes(detectedExt)) {
+        fileExtension = detectedExt;
+      }
+    }
+
+    console.log('Audio URL:', submission.audio_url);
+    console.log('Detected extension:', fileExtension);
+    console.log('Blob type:', audioBlob.type);
+    console.log('Blob size:', audioBlob.size);
+
+    // Create the file with proper extension and type
+    const mimeTypeMap = {
+      'm4a': 'audio/mp4',
+      'mp3': 'audio/mpeg',
+      'wav': 'audio/wav',
+      'webm': 'audio/webm',
+      'mp4': 'audio/mp4',
+      'ogg': 'audio/ogg',
+      'oga': 'audio/ogg',
+      'flac': 'audio/flac',
+      'mpga': 'audio/mpeg',
+      'mpeg': 'audio/mpeg'
+    };
     
-    const audioFile = new File([audioBlob], `recording.${safeExtension}`, { type: audioBlob.type });
+    const properMimeType = mimeTypeMap[fileExtension] || 'audio/mpeg';
+    const audioFile = new File(
+      [audioBlob], 
+      `recording.${fileExtension}`, 
+      { type: properMimeType }
+    );
+
+    console.log('Sending to Whisper as:', audioFile.name, audioFile.type);
 
     // Send to Whisper
     const transcription = await openai.audio.transcriptions.create({
@@ -75,6 +111,22 @@ export async function POST(request) {
 
   } catch (err) {
     console.error('Transcription error:', err);
+    
+    // Update status to error so we can see it failed
+    if (request) {
+      try {
+        const body = await request.clone().json();
+        if (body.submissionId) {
+          await supabase
+            .from('submissions')
+            .update({ status: 'error: ' + (err.message || 'unknown').slice(0, 200) })
+            .eq('id', body.submissionId);
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    
     return Response.json({ 
       error: err.message || 'Transcription failed' 
     }, { status: 500 });
