@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import OpenAI from 'openai';
+import OpenAI, { toFile } from 'openai';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -72,28 +72,15 @@ export async function POST(request) {
     console.log('Blob type:', audioBlob.type);
     console.log('Blob size:', audioBlob.size);
 
-    // Create the file with proper extension and type
-    const mimeTypeMap = {
-      'm4a': 'audio/mp4',
-      'mp3': 'audio/mpeg',
-      'wav': 'audio/wav',
-      'webm': 'audio/webm',
-      'mp4': 'audio/mp4',
-      'ogg': 'audio/ogg',
-      'oga': 'audio/ogg',
-      'flac': 'audio/flac',
-      'mpga': 'audio/mpeg',
-      'mpeg': 'audio/mpeg'
-    };
-    
-    const properMimeType = mimeTypeMap[fileExtension] || 'audio/mpeg';
-    const audioFile = new File(
-      [audioBlob], 
-      `recording.${fileExtension}`, 
-      { type: properMimeType }
-    );
+  // Convert blob to ArrayBuffer then Buffer (Node-compatible)
+    const arrayBuffer = await audioBlob.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
-    console.log('Sending to Whisper as:', audioFile.name, audioFile.type);
+    console.log('Buffer length:', buffer.length);
+    console.log('Sending to Whisper as: recording.' + fileExtension);
+
+    // Use OpenAI's toFile helper which properly formats for the API
+    const audioFile = await toFile(buffer, `recording.${fileExtension}`);
 
     // Send to Whisper
     const transcription = await openai.audio.transcriptions.create({
