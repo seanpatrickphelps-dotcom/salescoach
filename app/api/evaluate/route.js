@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { COACHING_SYSTEM_PROMPT } from '../../../lib/coachingPrompt';
+import { Resend } from 'resend';
+import { generateCoachingEmail } from '../../../lib/emailTemplate';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -11,10 +13,13 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+const resend = new Resend(process.env.RESEND_API_KEY);
+
 export async function POST(request) {
   console.log('===== EVALUATE ROUTE STARTED =====');
   console.log('ANTHROPIC_API_KEY exists:', !!process.env.ANTHROPIC_API_KEY);
   console.log('ANTHROPIC_API_KEY length:', process.env.ANTHROPIC_API_KEY?.length || 0);
+  console.log('RESEND_API_KEY exists:', !!process.env.RESEND_API_KEY);
   
   try {
     const { submissionId } = await request.json();
@@ -92,6 +97,26 @@ export async function POST(request) {
     }
 
     console.log('Evaluation saved successfully');
+
+    // Send coaching email
+    try {
+      const emailHtml = generateCoachingEmail(feedback, submission.rep_email, submission.outcome);
+      
+      const { data: emailData, error: emailError } = await resend.emails.send({
+        from: 'Coach <onboarding@resend.dev>',
+        to: submission.rep_email,
+        subject: `Today's estimate breakdown — ${feedback.overall_score.toFixed(1)}/10`,
+        html: emailHtml,
+      });
+
+      if (emailError) {
+        console.error('Email send error:', emailError);
+      } else {
+        console.log('Email sent successfully, ID:', emailData?.id);
+      }
+    } catch (emailErr) {
+      console.error('Email send failed:', emailErr);
+    }
 
     return Response.json({ 
       success: true, 
