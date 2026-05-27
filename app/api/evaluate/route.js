@@ -105,7 +105,7 @@ export async function POST(request) {
       const { data: emailData, error: emailError } = await resend.emails.send({
       from: 'Coach Sean <sean@collegeworkscoach.com>',
         to: submission.rep_email,
-        subject: `Today's estimate breakdown — ${feedback.overall_score.toFixed(1)}/10`,
+        subject: `Today's estimate breakdown ${feedback.overall_score.toFixed(1)}/10`,
         html: emailHtml,
       });
 
