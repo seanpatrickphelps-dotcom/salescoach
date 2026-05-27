@@ -59,13 +59,7 @@ export async function POST(request) {
       return Response.json({ error: 'Missing submissionId' }, { status: 400 });
     }
 
-    // Update status to evaluating
-    await supabase
-      .from('submissions')
-      .update({ status: 'evaluating' })
-      .eq('id', submissionId);
-
-    // Fetch the submission
+    // Fetch the submission FIRST to check current status
     const { data: submission, error: fetchError } = await supabase
       .from('submissions')
       .select('*')
@@ -75,6 +69,38 @@ export async function POST(request) {
     if (fetchError || !submission) {
       console.error('Failed to fetch submission:', fetchError);
       return Response.json({ error: 'Submission not found' }, { status: 404 });
+    }
+
+    // IDEMPOTENCY CHECK: Already completed? Don't re-evaluate or re-send email.
+    if (submission.status === 'completed') {
+      console.log('Submission already completed. Skipping duplicate evaluation.');
+      return Response.json({ 
+        success: true, 
+        message: 'Already completed, skipping duplicate evaluation' 
+      });
+    }
+
+    // ATOMIC UPDATE: Set status to 'evaluating' only if not already evaluating/completed
+    // This prevents race conditions when multiple webhooks trigger evaluation simultaneously
+    const { data: lockData, error: lockError } = await supabase
+      .from('submissions')
+      .update({ status: 'evaluating' })
+      .eq('id', submissionId)
+      .eq('status', 'transcribed')  // Only proceed if status is exactly 'transcribed'
+      .select();
+    
+    if (lockError) {
+      console.error('Failed to lock submission:', lockError);
+      throw new Error('Failed to lock submission for evaluation');
+    }
+    
+    // If no rows updated, another process already claimed this submission
+    if (!lockData || lockData.length === 0) {
+      console.log('Another evaluation already in progress for this submission. Skipping.');
+      return Response.json({ 
+        success: true, 
+        message: 'Already being evaluated' 
+      });
     }
 
     console.log('Evaluating submission:', submissionId);
