@@ -53,7 +53,7 @@ export default function Home() {
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
         <main style={{ 
           minHeight: '100vh',
-          background: '#004DE1',
+          background: 'white',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -63,29 +63,35 @@ export default function Home() {
           <div style={{
             maxWidth: '480px',
             width: '100%',
-            background: 'white',
-            padding: '56px 32px',
             textAlign: 'center'
           }}>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '40px' }}>
+              <img 
+                src="/cwp-logo.png" 
+                alt="College Works" 
+                style={{ width: '88px', height: '88px', display: 'block' }}
+              />
+            </div>
+
             <div style={{
-              width: '72px',
-              height: '72px',
+              width: '64px',
+              height: '64px',
               background: '#FF8200',
               margin: '0 auto 28px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '36px',
+              fontSize: '32px',
               color: 'white',
               fontWeight: '800'
             }}>✓</div>
             
             <h1 style={{ 
               color: '#000000', 
-              fontSize: '40px',
+              fontSize: '44px',
               fontWeight: '800',
               marginBottom: '16px',
-              letterSpacing: '-1px',
+              letterSpacing: '-1.5px',
               lineHeight: '1'
             }}>
               Got it.
@@ -120,12 +126,12 @@ export default function Home() {
                 background: '#FF8200', 
                 color: 'white', 
                 border: 'none', 
-                padding: '16px 36px',
-                fontSize: '15px',
-                fontWeight: '700',
+                padding: '18px 40px',
+                fontSize: '13px',
+                fontWeight: '800',
                 cursor: 'pointer',
                 fontFamily: 'inherit',
-                letterSpacing: '0.3px',
+                letterSpacing: '2px',
                 textTransform: 'uppercase'
               }}
             >
@@ -133,12 +139,10 @@ export default function Home() {
             </button>
 
             <div style={{
-              marginTop: '48px',
-              paddingTop: '24px',
-              borderTop: '2px solid #DBE2E9',
+              marginTop: '64px',
               fontSize: '11px',
               color: '#9ca3af',
-              letterSpacing: '2px',
+              letterSpacing: '3px',
               textTransform: 'uppercase',
               fontWeight: '700'
             }}>
@@ -156,32 +160,29 @@ export default function Home() {
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
       <main style={{ 
         minHeight: '100vh',
-        background: '#004DE1',
+        background: 'white',
         fontFamily: fontStack
       }}>
         {/* Header Bar */}
         <header style={{
-          padding: '24px 24px 0',
+          padding: '24px',
           maxWidth: '600px',
           margin: '0 auto',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between'
         }}>
+          <img 
+            src="/cwp-logo.png" 
+            alt="College Works" 
+            style={{ width: '64px', height: '64px', display: 'block' }}
+          />
           <div style={{
-            color: 'white',
-            fontSize: '20px',
-            fontWeight: '800',
-            letterSpacing: '-0.5px'
-          }}>
-            College Works
-          </div>
-          <div style={{
-            color: 'rgba(255,255,255,0.6)',
+            color: '#9ca3af',
             fontSize: '11px',
-            letterSpacing: '2px',
+            letterSpacing: '3px',
             textTransform: 'uppercase',
-            fontWeight: '700'
+            fontWeight: '800'
           }}>
             Coach
           </div>
@@ -191,26 +192,26 @@ export default function Home() {
         <div style={{
           maxWidth: '600px',
           margin: '0 auto',
-          padding: '48px 24px 32px'
+          padding: '32px 24px 32px'
         }}>
           <h1 style={{
-            color: 'white',
-            fontSize: '44px',
+            color: '#000000',
+            fontSize: '52px',
             fontWeight: '800',
-            lineHeight: '1',
+            lineHeight: '0.95',
             marginBottom: '20px',
-            letterSpacing: '-1.5px'
+            letterSpacing: '-2px'
           }}>
             Drop your estimate.<br />
-            <span style={{ color: '#FF8200' }}>Get coached.</span>
+            <span style={{ color: '#004DE1' }}>Get coached.</span>
           </h1>
           
           <p style={{
-            color: 'rgba(255,255,255,0.85)',
+            color: '#4b5563',
             fontSize: '17px',
             lineHeight: '1.5',
             fontWeight: '400',
-            maxWidth: '440px'
+            maxWidth: '480px'
           }}>
             Upload your in-home recording. Your coach reviews it against the Needs Satisfaction Selling Cycle and sends specific, actionable feedback.
           </p>
@@ -224,6 +225,7 @@ export default function Home() {
         }}>
           <div style={{
             background: 'white',
+            border: '2px solid #000000',
             padding: '36px 28px'
           }}>
             
@@ -247,7 +249,7 @@ export default function Home() {
                 style={{ 
                   width: '100%', 
                   padding: '16px 18px', 
-                  border: '2px solid #000000', 
+                  border: '2px solid #DBE2E9', 
                   fontSize: '16px',
                   fontFamily: 'inherit',
                   fontWeight: '500',
@@ -258,7 +260,7 @@ export default function Home() {
                   transition: 'border-color 0.15s'
                 }}
                 onFocus={(e) => e.target.style.borderColor = '#004DE1'}
-                onBlur={(e) => e.target.style.borderColor = '#000000'}
+                onBlur={(e) => e.target.style.borderColor = '#DBE2E9'}
               />
             </div>
 
@@ -276,7 +278,7 @@ export default function Home() {
               </label>
               <div style={{
                 position: 'relative',
-                border: `2px solid ${file ? '#00C65E' : '#000000'}`,
+                border: `2px solid ${file ? '#00C65E' : '#DBE2E9'}`,
                 padding: '28px 16px',
                 textAlign: 'center',
                 background: file ? '#f0fdf4' : 'white',
@@ -365,7 +367,7 @@ export default function Home() {
                 style={{ 
                   width: '100%', 
                   padding: '16px 18px', 
-                  border: '2px solid #000000', 
+                  border: '2px solid #DBE2E9', 
                   fontSize: '16px',
                   fontFamily: 'inherit',
                   fontWeight: '500',
@@ -400,7 +402,7 @@ export default function Home() {
                 background: status === 'uploading' ? '#9ca3af' : '#FF8200', 
                 color: 'white', 
                 border: 'none', 
-                fontSize: '15px',
+                fontSize: '14px',
                 fontWeight: '800',
                 cursor: status === 'uploading' ? 'wait' : 'pointer',
                 fontFamily: 'inherit',
@@ -436,9 +438,9 @@ export default function Home() {
           {/* Trust Line */}
           <div style={{
             textAlign: 'center',
-            color: 'white',
+            color: '#1f2937',
             fontSize: '15px',
-            marginTop: '32px',
+            marginTop: '36px',
             lineHeight: '1.5',
             fontWeight: '600',
             maxWidth: '420px',
@@ -446,13 +448,13 @@ export default function Home() {
             marginRight: 'auto'
           }}>
             Challenging? Yes. Worth it?<br />
-            <span style={{ color: '#FF8200', fontWeight: '700' }}>Ask any of our 10,000+ alumni.</span>
+            <span style={{ color: '#FF8200', fontWeight: '800' }}>Ask any of our 10,000+ alumni.</span>
           </div>
 
           {/* Footer Tagline */}
           <div style={{
             textAlign: 'center',
-            color: 'rgba(255,255,255,0.5)',
+            color: '#9ca3af',
             fontSize: '11px',
             marginTop: '48px',
             letterSpacing: '3px',
