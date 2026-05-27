@@ -16,6 +16,10 @@ export async function POST(request) {
       return Response.json({ error: 'Missing file or email' }, { status: 400 });
     }
 
+    console.log('Upload received from:', email);
+    console.log('File name:', file.name);
+    console.log('File size:', file.size);
+
     // Sanitize filename
     const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
     const fileName = `${Date.now()}-${safeName}`;
@@ -36,6 +40,8 @@ export async function POST(request) {
       console.error('Upload error:', uploadError);
       return Response.json({ error: uploadError.message }, { status: 500 });
     }
+
+    console.log('File uploaded to storage:', fileName);
 
     // Get public URL
     const { data: urlData } = supabase.storage
@@ -59,13 +65,27 @@ export async function POST(request) {
       return Response.json({ error: insertError.message }, { status: 500 });
     }
 
-    // Trigger transcription in the background
-    const baseUrl = request.headers.get('origin') || 'https://scoach-olive.vercel.app';
-    fetch(`${baseUrl}/api/transcribe`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ submissionId: insertData.id })
-    }).catch(err => console.error('Transcribe trigger failed:', err));
+    console.log('Submission record created:', insertData.id);
+
+    // Trigger transcription and wait for it
+    const host = request.headers.get('host');
+    const protocol = host?.includes('localhost') ? 'http' : 'https';
+    const baseUrl = `${protocol}://${host}`;
+    
+    console.log('Triggering transcription at:', `${baseUrl}/api/transcribe`);
+    
+    try {
+      const transcribeResponse = await fetch(`${baseUrl}/api/transcribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submissionId: insertData.id })
+      });
+      const transcribeResult = await transcribeResponse.json();
+      console.log('Transcribe response status:', transcribeResponse.status);
+      console.log('Transcribe result:', JSON.stringify(transcribeResult).slice(0, 200));
+    } catch (transcribeErr) {
+      console.error('Transcribe call failed:', transcribeErr);
+    }
 
     return Response.json({ 
       success: true, 
@@ -80,4 +100,4 @@ export async function POST(request) {
   }
 }
 
-export const maxDuration = 60;
+export const maxDuration = 120;
