@@ -72,7 +72,7 @@ export async function POST(request) {
     console.log('Blob type:', audioBlob.type);
     console.log('Blob size:', audioBlob.size);
 
-  // Convert blob to ArrayBuffer then Buffer (Node-compatible)
+    // Convert blob to ArrayBuffer then Buffer (Node-compatible)
     const arrayBuffer = await audioBlob.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
@@ -101,6 +101,19 @@ export async function POST(request) {
       throw updateError;
     }
 
+    // Trigger evaluation in the background
+    const host = request.headers.get('host');
+    const protocol = host?.includes('localhost') ? 'http' : 'https';
+    const baseUrl = `${protocol}://${host}`;
+    
+    console.log('Triggering evaluation at:', `${baseUrl}/api/evaluate`);
+    
+    fetch(`${baseUrl}/api/evaluate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ submissionId })
+    }).catch(err => console.error('Evaluate trigger failed:', err));
+
     return Response.json({ 
       success: true, 
       transcript: transcription.text 
@@ -124,18 +137,9 @@ export async function POST(request) {
       }
     }
     
-// Trigger evaluation in the background
-    const baseUrl = request.headers.get('origin') || 'https://' + request.headers.get('host');
-    fetch(`${baseUrl}/api/evaluate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ submissionId })
-    }).catch(err => console.error('Evaluate trigger failed:', err));
-
     return Response.json({ 
-      success: true, 
-      transcript: transcription.text 
-    });
+      error: err.message || 'Transcription failed' 
+    }, { status: 500 });
   }
 }
 
