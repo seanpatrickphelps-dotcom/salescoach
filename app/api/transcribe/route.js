@@ -35,10 +35,19 @@ export async function POST(request) {
       .update({ status: 'transcribing' })
       .eq('id', submissionId);
 
-    // Download the audio file from Supabase Storage
+   // Download the audio file from Supabase Storage
     const audioResponse = await fetch(submission.audio_url);
     const audioBlob = await audioResponse.blob();
-    const audioFile = new File([audioBlob], 'recording.mp3', { type: audioBlob.type });
+    
+    // Extract the file extension from the audio URL
+    const urlPath = submission.audio_url.split('?')[0];
+    const fileExtension = urlPath.split('.').pop().toLowerCase();
+    
+    // Map to a supported format name
+    const supportedExtensions = ['flac', 'm4a', 'mp3', 'mp4', 'mpeg', 'mpga', 'oga', 'ogg', 'wav', 'webm'];
+    const safeExtension = supportedExtensions.includes(fileExtension) ? fileExtension : 'mp3';
+    
+    const audioFile = new File([audioBlob], `recording.${safeExtension}`, { type: audioBlob.type });
 
     // Send to Whisper
     const transcription = await openai.audio.transcriptions.create({
