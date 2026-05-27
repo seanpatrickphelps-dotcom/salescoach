@@ -35,14 +35,24 @@ export async function POST(request) {
       .update({ status: 'transcribing' })
       .eq('id', submissionId);
 
-    // Download the audio file from Supabase Storage
-    const audioResponse = await fetch(submission.audio_url);
+    // Extract the file path from the audio URL
+    const audioUrlObj = new URL(submission.audio_url);
+    const pathParts = audioUrlObj.pathname.split('/');
+    const recordingsIndex = pathParts.indexOf('recordings');
+    const filePath = pathParts.slice(recordingsIndex + 1).join('/');
     
-    if (!audioResponse.ok) {
-      throw new Error(`Failed to download audio: ${audioResponse.status}`);
+    console.log('File path for download:', filePath);
+
+    // Download the file directly from Supabase Storage using the service role key
+    const { data: fileData, error: downloadError } = await supabase.storage
+      .from('recordings')
+      .download(filePath);
+
+    if (downloadError || !fileData) {
+      throw new Error(`Failed to download audio: ${downloadError?.message || 'unknown'}`);
     }
 
-    const audioBlob = await audioResponse.blob();
+    const audioBlob = fileData;
     
     // Determine the file extension from URL
     const urlPath = submission.audio_url.split('?')[0];
