@@ -32,16 +32,25 @@ export default function Home() {
         .from('recordings')
         .getPublicUrl(fileName);
 
-      const { error: insertError } = await supabase
+      const { data: insertData, error: insertError } = await supabase
         .from('submissions')
         .insert({
           rep_email: email,
           audio_url: urlData.publicUrl,
           outcome: outcome,
           status: 'uploaded'
-        });
+        })
+        .select()
+        .single();
 
       if (insertError) throw insertError;
+
+      // Trigger transcription in the background
+      fetch('/api/transcribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submissionId: insertData.id })
+      });
 
       setStatus('success');
     } catch (err) {
