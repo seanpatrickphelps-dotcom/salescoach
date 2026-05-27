@@ -8,13 +8,94 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
+// Compress audio file to fit Whisper's 25MB limit
+async function compressAudio(file) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const arrayBuffer = await file.arrayBuffer();
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      
+      // Downsample to mono 16kHz (plenty for speech, Whisper-optimal)
+      const targetSampleRate = 16000;
+      const offlineContext = new OfflineAudioContext(
+        1, // mono
+        Math.ceil(audioBuffer.duration * targetSampleRate),
+        targetSampleRate
+      );
+      
+      const source = offlineContext.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(offlineContext.destination);
+      source.start();
+      
+      const renderedBuffer = await offlineContext.startRendering();
+      
+      // Convert to WAV (universally supported by Whisper)
+      const wavBlob = audioBufferToWav(renderedBuffer);
+      const compressedFile = new File([wavBlob], 'compressed.wav', { type: 'audio/wav' });
+      
+      resolve(compressedFile);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+// Convert AudioBuffer to WAV Blob
+function audioBufferToWav(buffer) {
+  const numChannels = 1;
+  const sampleRate = buffer.sampleRate;
+  const format = 1; // PCM
+  const bitDepth = 16;
+  
+  const data = buffer.getChannelData(0);
+  const byteRate = sampleRate * numChannels * bitDepth / 8;
+  const blockAlign = numChannels * bitDepth / 8;
+  const dataSize = data.length * blockAlign;
+  
+  const arrayBuffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(arrayBuffer);
+  
+  // WAV header
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(view, 8, 'WAVE');
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, format, true);
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitDepth, true);
+  writeString(view, 36, 'data');
+  view.setUint32(40, dataSize, true);
+  
+  // PCM data
+  let offset = 44;
+  for (let i = 0; i < data.length; i++) {
+    const sample = Math.max(-1, Math.min(1, data[i]));
+    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+    offset += 2;
+  }
+  
+  return new Blob([arrayBuffer], { type: 'audio/wav' });
+}
+
+function writeString(view, offset, string) {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i));
+  }
+}
+
 export default function Home() {
   const [email, setEmail] = useState('');
   const [file, setFile] = useState(null);
   const [outcome, setOutcome] = useState('Sold on the spot');
   const [status, setStatus] = useState('idle');
   const [errorMsg, setErrorMsg] = useState('');
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [statusMsg, setStatusMsg] = useState('');
 
   const handleSubmit = async () => {
     setErrorMsg('');
@@ -24,21 +105,46 @@ export default function Home() {
       return;
     }
 
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setErrorMsg('That email looks off. Double check the format (you@collegeworks.com).');
+      return;
+    }
+
     setStatus('uploading');
-    setUploadProgress(0);
+    setStatusMsg('Uploading...');
 
     try {
       // Sanitize filename
       const safeName = file.name.replace(/[^\w.-]/g, '_');
       const fileName = `${Date.now()}-${safeName}`;
       
-      console.log('Uploading file:', fileName, 'Size:', file.size);
+      console.log('Original file:', fileName, 'Size:', file.size);
+
+      let uploadFile = file;
+      const TWENTY_FIVE_MB = 25 * 1024 * 1024;
+
+      // Compress audio if larger than 25MB (Whisper's hard limit)
+      if (file.size > TWENTY_FIVE_MB) {
+        console.log('File over 25MB, compressing...');
+        setStatusMsg('Compressing recording...');
+        
+        try {
+          uploadFile = await compressAudio(file);
+          console.log('Compressed file size:', uploadFile.size);
+          setStatusMsg('Uploading...');
+        } catch (compressErr) {
+          console.error('Compression failed:', compressErr);
+          throw new Error('Recording is too large to process. Try a shorter recording (under 90 minutes).');
+        }
+      }
 
       // Upload DIRECTLY to Supabase Storage (no Vercel size limit)
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('recordings')
-        .upload(fileName, file, {
-          contentType: file.type || 'audio/mpeg',
+        .upload(fileName, uploadFile, {
+          contentType: uploadFile.type || 'audio/mpeg',
           upsert: false
         });
 
@@ -47,6 +153,7 @@ export default function Home() {
       }
 
       console.log('File uploaded to storage');
+      setStatusMsg('Processing...');
 
       // Get public URL
       const { data: urlData } = supabase.storage
@@ -58,7 +165,7 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email,
+          email: email.trim(),
           outcome,
           audioUrl: urlData.publicUrl,
           fileName: fileName
@@ -72,7 +179,6 @@ export default function Home() {
       try {
         result = JSON.parse(responseText);
       } catch {
-        // Server returned non-JSON (probably an error page)
         throw new Error('Server error. Please try again or try a smaller file.');
       }
 
@@ -83,6 +189,7 @@ export default function Home() {
       setStatus('success');
     } catch (err) {
       setStatus('error');
+      setStatusMsg('');
       
       let userMessage = err.message || 'please try again';
       
@@ -92,7 +199,7 @@ export default function Home() {
         userMessage = 'Your recording is stored in the cloud. Save it to your phone first, then upload. Or record directly with Voice Memos.';
       } else if (userMessage.toLowerCase().includes('too large') ||
                  userMessage.toLowerCase().includes('entity')) {
-        userMessage = 'File is too large. Try a shorter recording (under 90 minutes) or compress the file first.';
+        userMessage = 'File is too large. Try a shorter recording (under 90 minutes).';
       }
       
       setErrorMsg(userMessage);
@@ -148,7 +255,7 @@ export default function Home() {
             </p>
             
             <p style={{ color: '#6b7280', fontSize: '15px', lineHeight: '1.5', marginBottom: '36px' }}>
-              Feedback heading to <strong style={{ color: '#004DE1' }}>{email}</strong> in about 10 minutes. Read it before your next estimate.
+              Feedback heading to <strong style={{ color: '#004DE1' }}>{email}</strong> in 2 to 10 minutes depending on recording length. Read it before your next estimate.
             </p>
 
             <button 
@@ -156,6 +263,7 @@ export default function Home() {
                 setStatus('idle');
                 setFile(null);
                 setEmail('');
+                setStatusMsg('');
               }}
               style={{ 
                 background: '#FF8200', color: 'white', border: 'none', 
@@ -222,6 +330,11 @@ export default function Home() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@collegeworks.com"
+                autoCapitalize="none"
+                autoCorrect="off"
+                autoComplete="email"
+                inputMode="email"
+                spellCheck="false"
                 style={{ 
                   width: '100%', padding: '16px 18px', border: '2px solid #DBE2E9', 
                   fontSize: '16px', fontFamily: 'inherit', fontWeight: '500',
@@ -322,7 +435,7 @@ export default function Home() {
                 textTransform: 'uppercase', transition: 'transform 0.1s'
               }}
             >
-              {status === 'uploading' ? 'Uploading...' : 'Submit for Coaching'}
+              {status === 'uploading' ? (statusMsg || 'Uploading...') : 'Submit for Coaching'}
             </button>
 
             {errorMsg && (
@@ -331,6 +444,16 @@ export default function Home() {
                 background: '#fef2f2', border: '2px solid #CA3A57',
                 color: '#991b1b', fontSize: '14px', lineHeight: '1.4', fontWeight: '500'
               }}>{errorMsg}</div>
+            )}
+
+            {status === 'uploading' && statusMsg === 'Compressing recording...' && (
+              <div style={{ 
+                marginTop: '20px', padding: '14px 16px',
+                background: '#eff6ff', border: '2px solid #004DE1',
+                color: '#004DE1', fontSize: '14px', lineHeight: '1.4', fontWeight: '600'
+              }}>
+                Large recording detected. Compressing for transcription. This takes about 10-30 seconds depending on length.
+              </div>
             )}
           </div>
 
