@@ -129,7 +129,7 @@ Now evaluate this appointment against the College Works methodology and return y
     console.log('Calling Claude for evaluation...');
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 2500,
+      max_tokens: 8000,
       system: COACHING_SYSTEM_PROMPT,
       messages: [
         { role: 'user', content: userMessage }
